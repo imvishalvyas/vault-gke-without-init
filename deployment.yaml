@@ -1,0 +1,76 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+  labels:
+    app: test-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-app
+  # pod template
+  template:
+    metadata:
+      labels:
+        app: test-app
+    spec:
+      serviceAccountName: vault-auth
+      volumes:
+      - name: vault-token
+        emptyDir:
+          medium: Memory
+
+      - name: vault-tls
+        secret:
+          secretName: vault
+
+      - name: config
+        configMap:
+          name: test-app-multi
+          items:
+            - key: consul-template-config.hcl
+              path: consul-template-config.hcl
+
+      - name: shared-data
+        emptyDir: {}
+
+      containers:
+        # The consul-template container will pull secrets from Vault and expose
+        # them as files on disk.
+      - name: consul-template
+        image: hashicorp/consul-template:latest
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/consul-template
+        - name: shared-data
+          mountPath: /etc/secrets
+        env:
+        - name: HOME
+          value: /home/vault
+        - name: VAULT_ADDR
+          value: https://linuxguru
+        - name: VAULT_TOKEN
+          value: 7fe
+        args:
+          [
+            "-config=/etc/consul-template/consul-template-config.hcl",
+            #"-log-level=debug",
+          ]
+      - name: test-app
+        image: nginx
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: 50m
+        volumeMounts:
+        - name: shared-data
+          mountPath: /opt/.config
+          readOnly: true
+
